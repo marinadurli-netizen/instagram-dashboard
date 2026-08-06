@@ -30,14 +30,18 @@ locks out any other role — e.g. an anon/read-only credential — by default.
 1. Create an app at [developers.facebook.com](https://developers.facebook.com)
    (Meta for Developers) and add the Instagram Graph API product. Set
    `META_APP_ID` / `META_APP_SECRET` from its Basic Settings.
-2. Under Facebook Login settings, add both your local
-   (`http://localhost:3000/api/instagram/callback`) and deployed
+2. Under **Facebook Login for Business > Configurations**, create a
+   configuration with `pages_show_list`, `pages_read_engagement`,
+   `instagram_basic`, `instagram_manage_insights`, and
+   `business_management`. Set `META_CONFIG_ID` to its Configuration ID.
+3. On that configuration (or the app's Facebook Login settings), add both
+   your local (`http://localhost:3000/api/instagram/callback`) and deployed
    (`https://<your-domain>/api/instagram/callback`) callback URLs to
    **Valid OAuth Redirect URIs**.
-3. Make sure your Instagram account is a Business/Creator account linked to
+4. Make sure your Instagram account is a Business/Creator account linked to
    your Facebook Page (Instagram app > Settings > Linked Accounts).
-4. Set `ADMIN_SECRET` to a long random string.
-5. Visit `/api/instagram/connect?secret=<ADMIN_SECRET>` and complete the
+5. Set `ADMIN_SECRET` to a long random string.
+6. Visit `/api/instagram/connect?secret=<ADMIN_SECRET>` and complete the
    Facebook login/consent screen. This resolves your Page's linked Instagram
    Business account and stores its access token in `ig_accounts`.
 
