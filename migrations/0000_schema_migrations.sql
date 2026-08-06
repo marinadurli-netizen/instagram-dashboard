@@ -1,0 +1,6 @@
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  name TEXT PRIMARY KEY,
+  applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE schema_migrations ENABLE ROW LEVEL SECURITY;
