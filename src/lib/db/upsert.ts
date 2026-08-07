@@ -1,4 +1,4 @@
-import { queryOne } from "./query";
+import { query, queryOne } from "./query";
 
 const IDENTIFIER = /^[a-z_][a-z0-9_]*$/;
 
@@ -7,6 +7,29 @@ function quoteIdent(name: string): string {
     throw new Error(`Unsafe identifier: ${name}`);
   }
   return `"${name}"`;
+}
+
+// `FROM (VALUES ($1, ...)) AS new(col, ...)` doesn't get the automatic
+// parameter-type inference a top-level `INSERT ... VALUES` gets from its
+// target columns — Postgres falls back to `text` for anything ambiguous
+// (most commonly a `null` parameter), which then fails to COALESCE against
+// a differently-typed existing column (e.g. `text` vs `timestamptz`). So
+// each value needs an explicit cast, which means looking up the real
+// column types first.
+async function getColumnTypes(table: string, columns: string[]): Promise<Record<string, string>> {
+  const rows = await query<{ column_name: string; udt_name: string }>(
+    `SELECT column_name, udt_name FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1 AND column_name = ANY($2)`,
+    [table, columns],
+  );
+  const types: Record<string, string> = {};
+  for (const row of rows) types[row.column_name] = row.udt_name;
+  for (const col of columns) {
+    if (!types[col]) {
+      throw new Error(`upsert: column "${col}" not found on table "${table}"`);
+    }
+  }
+  return types;
 }
 
 export interface UpsertOptions {
@@ -33,7 +56,8 @@ export async function upsert<T extends Record<string, unknown> = Record<string, 
 
   const quotedTable = quoteIdent(table);
   const quotedColumns = columns.map(quoteIdent);
-  const placeholders = columns.map((_, i) => `$${i + 1}`);
+  const columnTypes = await getColumnTypes(table, columns);
+  const placeholders = columns.map((col, i) => `$${i + 1}::${quoteIdent(columnTypes[col]!)}`);
   const params = columns.map((col) => values[col]);
 
   const updateColumns = columns.filter((col) => !conflictColumns.includes(col));
