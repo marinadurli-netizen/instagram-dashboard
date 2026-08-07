@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsert } from "@/lib/db/upsert";
 import {
+  debugToken,
   exchangeCodeForToken,
   exchangeForLongLivedToken,
   listPagesWithIgAccounts,
@@ -23,11 +24,29 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   const connectable = pages.filter((p) => p.instagram_business_account);
   if (connectable.length === 0) {
+    // Temporary diagnostics (remove once connect works): shows exactly what
+    // the OAuth grant contained and what /me/accounts returned, without
+    // leaking any token value.
+    const debug = await debugToken(longLived.access_token).catch((err) => ({
+      error: (err as Error).message,
+    }));
+    console.error("IG connect failed: no page with instagram_business_account", {
+      debug,
+      pages: pages.map((p) => ({ id: p.id, name: p.name, hasInstagramAccount: !!p.instagram_business_account })),
+    });
     return NextResponse.json(
       {
         error:
           "No Facebook Page with a linked Instagram Business account was found. " +
           "Link your Instagram account to the Page in Instagram settings, then try again.",
+        debug: {
+          tokenInfo: debug,
+          pages: pages.map((p) => ({
+            id: p.id,
+            name: p.name,
+            hasInstagramAccount: !!p.instagram_business_account,
+          })),
+        },
       },
       { status: 400 },
     );
