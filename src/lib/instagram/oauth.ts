@@ -46,3 +46,37 @@ export async function listPagesWithIgAccounts(userAccessToken: string): Promise<
   });
   return data.data;
 }
+
+export interface TokenDebugInfo {
+  appId?: string;
+  type?: string;
+  isValid?: boolean;
+  scopes?: string[];
+  expiresAt?: number;
+}
+
+// Reveals exactly what the OAuth dialog actually granted (token type, app,
+// scopes) — the fastest way to tell "wrong permissions" apart from "wrong
+// API call" when /me/accounts doesn't return what's expected. Never
+// includes the token value itself, only metadata about it.
+export async function debugToken(inputToken: string): Promise<TokenDebugInfo> {
+  const data = await graphFetch<{
+    data: {
+      app_id?: string;
+      type?: string;
+      is_valid?: boolean;
+      scopes?: string[];
+      expires_at?: number;
+    };
+  }>("/debug_token", {
+    input_token: inputToken,
+    access_token: `${getMetaAppId()}|${getMetaAppSecret()}`,
+  });
+  return {
+    appId: data.data.app_id,
+    type: data.data.type,
+    isValid: data.data.is_valid,
+    scopes: data.data.scopes,
+    expiresAt: data.data.expires_at,
+  };
+}
