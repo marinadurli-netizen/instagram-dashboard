@@ -8,6 +8,23 @@ import {
 } from "@/lib/instagram/oauth";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  try {
+    return await handleCallback(request);
+  } catch (err) {
+    // Temporary (remove once connect works): an unhandled error here would
+    // otherwise surface as an opaque platform 500 page with no way to see
+    // what broke. Never includes a token — GraphApiError/pg errors don't
+    // carry bound values, only messages/codes.
+    const error = err as Error;
+    console.error("IG connect callback crashed:", error);
+    return NextResponse.json(
+      { error: `${error.name}: ${error.message}` },
+      { status: 500 },
+    );
+  }
+}
+
+async function handleCallback(request: NextRequest): Promise<NextResponse> {
   const code = request.nextUrl.searchParams.get("code");
   const state = request.nextUrl.searchParams.get("state");
   const cookieState = request.cookies.get("ig_oauth_state")?.value;
