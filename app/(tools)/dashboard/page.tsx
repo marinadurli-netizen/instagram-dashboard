@@ -21,6 +21,27 @@ import { StatTiles } from "../../components/StatTiles";
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
+  try {
+    return await renderDashboard();
+  } catch (err) {
+    // Next's production error boundary hides the real message behind an
+    // opaque digest with no way to see what broke short of Vercel's own
+    // logs. Render it directly instead — temporary, same reasoning as the
+    // OAuth callback's error handling. Never includes a token/secret: DB
+    // errors here are schema/connection issues, not credential dumps.
+    const error = err as Error;
+    console.error("Dashboard render failed:", error);
+    return (
+      <main className="p-6">
+        <p className="font-mono text-sm" style={{ color: "var(--warn)" }}>
+          {error.name}: {error.message}
+        </p>
+      </main>
+    );
+  }
+}
+
+async function renderDashboard() {
   const profile = await getProfile();
   const handle = profile?.handle;
 
