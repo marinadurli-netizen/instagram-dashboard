@@ -1,12 +1,10 @@
-import { syncAllAccounts } from "../src/lib/instagram/sync";
+import { sync } from "../lib/instagram/sync";
 
 async function main(): Promise<void> {
-  const summaries = await syncAllAccounts();
-  for (const s of summaries) {
-    console.log(
-      `${s.accountId}: ${s.postsUpserted} posts, ${s.metricsUpserted} metrics updated, ${s.insightErrors} insight errors`,
-    );
-  }
+  const summary = await sync();
+  console.log(
+    `${summary.postsUpserted} posts, ${summary.metricsUpserted} metrics updated, ${summary.insightErrors} insight errors`,
+  );
 }
 
 main()

@@ -1,26 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsert } from "@/lib/db/upsert";
-import {
-  debugToken,
-  exchangeCodeForToken,
-  exchangeForLongLivedToken,
-  listPagesWithIgAccounts,
-} from "@/lib/instagram/oauth";
+import { exchangeCodeForToken, exchangeForLongLivedToken, listPagesWithIgAccounts } from "@/lib/instagram/oauth";
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     return await handleCallback(request);
   } catch (err) {
-    // Temporary (remove once connect works): an unhandled error here would
-    // otherwise surface as an opaque platform 500 page with no way to see
-    // what broke. Never includes a token — GraphApiError/pg errors don't
+    // An unhandled error here would otherwise surface as an opaque platform
+    // 500 page. Never includes a token — GraphApiError/pg errors don't
     // carry bound values, only messages/codes.
     const error = err as Error;
     console.error("IG connect callback crashed:", error);
-    return NextResponse.json(
-      { error: `${error.name}: ${error.message}` },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: `${error.name}: ${error.message}` }, { status: 500 });
   }
 }
 
@@ -41,29 +32,15 @@ async function handleCallback(request: NextRequest): Promise<NextResponse> {
 
   const connectable = pages.filter((p) => p.instagram_business_account);
   if (connectable.length === 0) {
-    // Temporary diagnostics (remove once connect works): shows exactly what
-    // the OAuth grant contained and what /me/accounts returned, without
-    // leaking any token value.
-    const debug = await debugToken(longLived.access_token).catch((err) => ({
-      error: (err as Error).message,
-    }));
-    console.error("IG connect failed: no page with instagram_business_account", {
-      debug,
-      pages: pages.map((p) => ({ id: p.id, name: p.name, hasInstagramAccount: !!p.instagram_business_account })),
-    });
+    console.error(
+      "IG connect failed: no page with instagram_business_account",
+      pages.map((p) => ({ id: p.id, name: p.name })),
+    );
     return NextResponse.json(
       {
         error:
           "No Facebook Page with a linked Instagram Business account was found. " +
           "Link your Instagram account to the Page in Instagram settings, then try again.",
-        debug: {
-          tokenInfo: debug,
-          pages: pages.map((p) => ({
-            id: p.id,
-            name: p.name,
-            hasInstagramAccount: !!p.instagram_business_account,
-          })),
-        },
       },
       { status: 400 },
     );
@@ -76,13 +53,14 @@ async function handleCallback(request: NextRequest): Promise<NextResponse> {
   const ig = page.instagram_business_account!;
 
   await upsert({
-    table: "ig_accounts",
+    table: "profile",
     conflictColumns: ["id"],
     values: {
-      id: ig.id,
-      username: ig.username ?? "unknown",
-      access_token: page.access_token,
-      token_expires_at: null,
+      id: 1,
+      handle: ig.username ?? "unknown",
+      instagram_account_id: ig.id,
+      instagram_access_token: page.access_token,
+      instagram_token_expires_at: null,
       facebook_page_id: page.id,
     },
   });
