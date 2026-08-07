@@ -10,9 +10,12 @@
   --text: #f4f4f5;
   --muted: #a1a1aa;
   --faint: #6b6b76;
-  --accent: #22c55e;
-  --warn: #eab308;
+  --accent: #15803d;
+  --warn: #b45309;
   --idea: #6366f1;
+  --accent-soft: rgb(21 128 61 / 14%);
+  --warn-soft: rgb(180 83 9 / 14%);
+  --idea-soft: rgb(99 102 241 / 14%);
 }
 
 body {

@@ -1,5 +1,6 @@
 import { query, queryOne } from "./query";
 import { postedAtExpr } from "./postedAt";
+import { todayKey } from "./localDate";
 
 export interface MedianMetrics {
   views: number | null;
@@ -22,8 +23,8 @@ export async function getMedianMetrics(
   { windowDays }: MedianMetricsOptions = {},
 ): Promise<MedianMetrics> {
   const postedAt = postedAtExpr();
-  const windowClause = windowDays ? `AND ${postedAt} >= CURRENT_DATE - $2::int` : "";
-  const params: unknown[] = windowDays ? [handle, windowDays] : [handle];
+  const windowClause = windowDays ? `AND ${postedAt} >= $2::date - $3::int` : "";
+  const params: unknown[] = windowDays ? [handle, todayKey(), windowDays] : [handle];
 
   const row = await queryOne<MedianMetrics>(
     `
@@ -71,9 +72,9 @@ export async function listRecentPosts(handle: string, windowDays: number): Promi
     SELECT id, platform, external_id, url, thumb_url, caption, posted_at,
            views, likes, comments, shares, saves, reach, handle
     FROM posts
-    WHERE handle = $1 AND ${postedAt} >= CURRENT_DATE - $2::int
+    WHERE handle = $1 AND ${postedAt} >= $2::date - $3::int
     ORDER BY ${postedAt} DESC
     `,
-    [handle, windowDays],
+    [handle, todayKey(), windowDays],
   );
 }
