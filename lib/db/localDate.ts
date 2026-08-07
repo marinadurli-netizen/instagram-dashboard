@@ -31,3 +31,13 @@ export function localDateKey(date: Date): string {
   const { year, month, day } = localCalendarParts(date);
   return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
+
+// "Today" in APP_TIMEZONE. Windowed queries must bind this in as a
+// parameter (`$n::date`) instead of using Postgres's CURRENT_DATE, which
+// reflects the database session's timezone (typically UTC on a hosted
+// provider) — not APP_TIMEZONE. Using CURRENT_DATE would silently shift a
+// "last 30 days" window by hours around midnight, the exact bug this file
+// exists to prevent.
+export function todayKey(): string {
+  return localDateKey(new Date());
+}
