@@ -1,6 +1,6 @@
 # Content Studio
 
-Personal Instagram content-analytics dashboard. Next.js (App Router, TypeScript,
+Personal content-analytics dashboard. Next.js (App Router, TypeScript,
 Tailwind), Postgres via `pg`, Anthropic SDK for AI features.
 
 ## Database
@@ -14,7 +14,14 @@ Schema lives in `migrations/*.sql`, applied in filename order and tracked in
 policies: the app connects as the table owner (which bypasses RLS), so this
 locks out any other role — e.g. an anon/read-only credential — by default.
 
-`src/lib/db/`:
+Core tables: `posts` (platform-agnostic — keyed by `platform` + `external_id`,
+metrics inline), `insights` (AI post-mortems and cross-library pattern
+analyses), `remakes`, `scripts` (script writer / hook generator drafts),
+`boards` / `board_posts` (content-planning boards), and two single-row
+tables guarded by `CHECK (id = 1)`: `profile` (the connected account) and
+`auth` (the app's password gate, populated in a later phase).
+
+`lib/db/`:
 - `pool.ts` — singleton `pg` `Pool`, with type parsers so `numeric`/`bigint`
   come back as `number` and `date` stays a raw `YYYY-MM-DD` string.
 - `query.ts` — `query`/`queryOne` helpers (async).
@@ -22,6 +29,13 @@ locks out any other role — e.g. an anon/read-only credential — by default.
   means "keep the stored value", including for `NOT NULL` columns.
 - `localDate.ts` — local calendar day-key helpers, always timezone-aware
   (never derived from UTC/`toISOString`).
+- `postedAt.ts` — `postedAtExpr()`, the one definition of "when did this
+  post happen" (`posted_at` if known, else `created_at` converted into
+  `APP_TIMEZONE`). Every windowed query (medians, "last N days", trends)
+  must filter/order on this, not on `posted_at` or `created_at` directly.
+- `posts.ts` — example consumers: `getMedianMetrics()` (medians computed in
+  SQL via `percentile_cont`, never pulled into JS to sort) and
+  `listRecentPosts()`.
 
 ## Instagram ingestion
 
@@ -43,11 +57,12 @@ locks out any other role — e.g. an anon/read-only credential — by default.
 5. Set `ADMIN_SECRET` to a long random string.
 6. Visit `/api/instagram/connect?secret=<ADMIN_SECRET>` and complete the
    Facebook login/consent screen. This resolves your Page's linked Instagram
-   Business account and stores its access token in `ig_accounts`.
+   Business account and stores its access token in `profile` (the single
+   connected-account row).
 
 ### Syncing
 
-- `npm run sync` — runs a full sync locally (all accounts in `ig_accounts`).
+- `npm run sync` — runs a full sync locally against the connected account.
   Use this for the initial full-history backfill; it can take a while and
   may exceed a serverless function's time limit, which is why it's a local
   script rather than something you'd trigger from `/api/cron/sync` for the
@@ -58,13 +73,15 @@ locks out any other role — e.g. an anon/read-only credential — by default.
   Hobby plans limit cron jobs to once/day; adjust `vercel.json`'s schedule
   if you're on Pro and want tighter freshness.
 
-Ingestion code lives in `src/lib/instagram/`:
+Ingestion code lives in `lib/instagram/`:
 - `client.ts` — Graph API fetch/batch wrapper with retry-on-5xx and
   rate-limit-usage warnings.
 - `media.ts` — paginates the full `/media` edge (entire post history).
 - `metrics.ts` — which insight metrics are valid per media type (this list
   drifts as Meta changes the API — see the comment in the file).
 - `insights.ts` — fetches insights in batches of 50 via the Graph API batch
-  endpoint, to keep well under rate limits even for a large history.
+  endpoint (to keep well under rate limits even for a large history), and
+  maps Meta's metric names directly onto `posts`' own column names.
 - `oauth.ts` — code/token exchange and Page/IG-account discovery.
-- `sync.ts` — orchestrates the above into `posts` / `post_metrics` upserts.
+- `sync.ts` — orchestrates the above into `posts` upserts (metadata and
+  metrics both land on the same row, keyed by `platform` + `external_id`).

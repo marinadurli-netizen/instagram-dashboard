@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { syncAllAccounts } from "@/lib/instagram/sync";
+import { sync } from "@/lib/instagram/sync";
 
 // Vercel Cron signs requests with `Authorization: Bearer ${CRON_SECRET}`
 // when CRON_SECRET is set on the project — verify it so this endpoint can't
@@ -11,8 +11,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   }
 
   try {
-    const summaries = await syncAllAccounts();
-    return NextResponse.json({ summaries });
+    const summary = await sync();
+    return NextResponse.json({ summary });
   } catch (err) {
     console.error("Cron sync failed:", err);
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });

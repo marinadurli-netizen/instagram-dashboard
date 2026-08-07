@@ -2,7 +2,7 @@
 // any UTC-based extraction) silently shifts posts made in the evening onto
 // the next calendar day. Every day key in this app must instead be derived
 // from calendar parts in APP_TIMEZONE, the creator's own timezone.
-const APP_TIMEZONE = process.env.APP_TIMEZONE ?? "America/Sao_Paulo";
+export const APP_TIMEZONE = process.env.APP_TIMEZONE ?? "America/Sao_Paulo";
 
 const partsFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: APP_TIMEZONE,

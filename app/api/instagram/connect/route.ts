@@ -4,7 +4,7 @@ import { FACEBOOK_OAUTH_DIALOG_URL, getMetaAppId, getMetaConfigId } from "@/lib/
 
 // Not the app's real auth gate (that's a later phase) — just enough to stop
 // a random visitor from kicking off our OAuth flow and overwriting the
-// single ig_accounts row with their own Instagram account.
+// single profile row with their own Instagram account.
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const secret = request.nextUrl.searchParams.get("secret");
   if (!process.env.ADMIN_SECRET || secret !== process.env.ADMIN_SECRET) {

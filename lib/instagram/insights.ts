@@ -15,16 +15,17 @@ export interface MediaForInsights {
   media_product_type: string | null;
 }
 
+// Keys match posts' own metric columns directly, so callers can spread this
+// straight into an upsert() values object.
 export interface MetricsValues {
   reach?: number;
-  saved?: number;
+  saves?: number;
   shares?: number;
   comments?: number;
   likes?: number;
-  plays?: number;
-  total_interactions?: number;
-  avg_watch_time_seconds?: number;
-  total_watch_time_seconds?: number;
+  views?: number;
+  avg_watch_s?: number;
+  total_watch_s?: number;
 }
 
 interface RawInsightMetric {
@@ -40,7 +41,7 @@ function extractValue(metric: RawInsightMetric): number | undefined {
 }
 
 // ig_reels_avg_watch_time and ig_reels_video_view_total_time come back in
-// milliseconds; post_metrics stores seconds.
+// milliseconds; posts stores seconds.
 const msToSeconds = (ms: number) => ms / 1000;
 
 function parseInsightsBody(data: RawInsightMetric[]): MetricsValues {
@@ -53,7 +54,7 @@ function parseInsightsBody(data: RawInsightMetric[]): MetricsValues {
         result.reach = value;
         break;
       case "saved":
-        result.saved = value;
+        result.saves = value;
         break;
       case "shares":
         result.shares = value;
@@ -65,17 +66,16 @@ function parseInsightsBody(data: RawInsightMetric[]): MetricsValues {
         result.likes = value;
         break;
       case "plays":
-        result.plays = value;
-        break;
-      case "total_interactions":
-        result.total_interactions = value;
+        result.views = value;
         break;
       case "ig_reels_avg_watch_time":
-        result.avg_watch_time_seconds = msToSeconds(value);
+        result.avg_watch_s = msToSeconds(value);
         break;
       case "ig_reels_video_view_total_time":
-        result.total_watch_time_seconds = msToSeconds(value);
+        result.total_watch_s = msToSeconds(value);
         break;
+      // total_interactions has no column on posts (views/likes/comments/
+      // shares/saves/reach cover it) — intentionally dropped.
     }
   }
   return result;

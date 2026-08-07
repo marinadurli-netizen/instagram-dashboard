@@ -9,27 +9,44 @@ function quoteIdent(name: string): string {
   return `"${name}"`;
 }
 
+interface ColumnInfo {
+  udtName: string;
+  isNullable: boolean;
+  hasDefault: boolean;
+  isIdentity: boolean;
+}
+
 // `FROM (VALUES ($1, ...)) AS new(col, ...)` doesn't get the automatic
 // parameter-type inference a top-level `INSERT ... VALUES` gets from its
 // target columns — Postgres falls back to `text` for anything ambiguous
 // (most commonly a `null` parameter), which then fails to COALESCE against
 // a differently-typed existing column (e.g. `text` vs `timestamptz`). So
 // each value needs an explicit cast, which means looking up the real
-// column types first.
-async function getColumnTypes(table: string, columns: string[]): Promise<Record<string, string>> {
-  const rows = await query<{ column_name: string; udt_name: string }>(
-    `SELECT column_name, udt_name FROM information_schema.columns
-     WHERE table_schema = 'public' AND table_name = $1 AND column_name = ANY($2)`,
-    [table, columns],
+// column types first — for every column on the table, not just the ones
+// this call provides (see requiredColumns below).
+async function getTableColumns(table: string): Promise<Record<string, ColumnInfo>> {
+  const rows = await query<{
+    column_name: string;
+    udt_name: string;
+    is_nullable: string;
+    column_default: string | null;
+    is_identity: string;
+  }>(
+    `SELECT column_name, udt_name, is_nullable, column_default, is_identity
+     FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = $1`,
+    [table],
   );
-  const types: Record<string, string> = {};
-  for (const row of rows) types[row.column_name] = row.udt_name;
-  for (const col of columns) {
-    if (!types[col]) {
-      throw new Error(`upsert: column "${col}" not found on table "${table}"`);
-    }
+  const info: Record<string, ColumnInfo> = {};
+  for (const row of rows) {
+    info[row.column_name] = {
+      udtName: row.udt_name,
+      isNullable: row.is_nullable === "YES",
+      hasDefault: row.column_default !== null,
+      isIdentity: row.is_identity === "YES",
+    };
   }
-  return types;
+  return info;
 }
 
 export interface UpsertOptions {
@@ -39,8 +56,8 @@ export interface UpsertOptions {
 }
 
 // Inserts `values`, or on a conflict over `conflictColumns` updates every
-// other column — but a `null` in `values` means "leave the stored value
-// alone" rather than "clear it", via COALESCE(EXCLUDED.col, table.col).
+// other provided column — but a `null` in `values` means "leave the stored
+// value alone" rather than "clear it", via COALESCE(EXCLUDED.col, table.col).
 export async function upsert<T extends Record<string, unknown> = Record<string, unknown>>({
   table,
   conflictColumns,
@@ -55,9 +72,37 @@ export async function upsert<T extends Record<string, unknown> = Record<string, 
   }
 
   const quotedTable = quoteIdent(table);
-  const quotedColumns = columns.map(quoteIdent);
-  const columnTypes = await getColumnTypes(table, columns);
-  const placeholders = columns.map((col, i) => `$${i + 1}::${quoteIdent(columnTypes[col]!)}`);
+  const tableColumns = await getTableColumns(table);
+  for (const col of columns) {
+    if (!tableColumns[col]) {
+      throw new Error(`upsert: column "${col}" not found on table "${table}"`);
+    }
+  }
+
+  // A partial upsert call (e.g. metrics-only, omitting `handle`) hits the
+  // same "Postgres validates the proposed row before it knows about the
+  // conflict" problem as a null NOT NULL column — except here the column is
+  // missing from the INSERT's column list entirely, so it'd get its default
+  // (or NULL) rather than anything COALESCE could rescue. Any NOT NULL,
+  // no-default column this call doesn't mention has to be included anyway,
+  // sourced purely from the existing row: on a genuine conflict this is
+  // inert (only the SET clause below writes anything), and on a genuine
+  // first-time insert `existing` has no match, so it correctly fails NOT
+  // NULL instead of silently succeeding with missing required data.
+  const requiredColumns = Object.keys(tableColumns).filter((col) => {
+    const info = tableColumns[col]!;
+    return (
+      !info.isNullable &&
+      !info.hasDefault &&
+      !info.isIdentity &&
+      !conflictColumns.includes(col) &&
+      !columns.includes(col)
+    );
+  });
+
+  const allInsertColumns = [...columns, ...requiredColumns];
+  const quotedAllInsertColumns = allInsertColumns.map(quoteIdent);
+  const placeholders = columns.map((col, i) => `$${i + 1}::${quoteIdent(tableColumns[col]!.udtName)}`);
   const params = columns.map((col) => values[col]);
 
   const updateColumns = columns.filter((col) => !conflictColumns.includes(col));
@@ -73,12 +118,13 @@ export async function upsert<T extends Record<string, unknown> = Record<string, 
   // merge (it re-reads the row at conflict time under normal MVCC rules);
   // the LEFT JOIN merge only needs to get the initial insert attempt past
   // NOT NULL checks.
-  const selectList = columns
-    .map((col) => {
+  const selectList = [
+    ...columns.map((col) => {
       const q = quoteIdent(col);
       return conflictColumns.includes(col) ? `new.${q}` : `COALESCE(new.${q}, existing.${q})`;
-    })
-    .join(", ");
+    }),
+    ...requiredColumns.map((col) => `existing.${quoteIdent(col)}`),
+  ].join(", ");
 
   const joinClause = conflictColumns
     .map((col) => {
@@ -97,9 +143,9 @@ export async function upsert<T extends Record<string, unknown> = Record<string, 
   const conflictClause = conflictColumns.map(quoteIdent).join(", ");
 
   const sql = `
-    INSERT INTO ${quotedTable} (${quotedColumns.join(", ")})
+    INSERT INTO ${quotedTable} (${quotedAllInsertColumns.join(", ")})
     SELECT ${selectList}
-    FROM (VALUES (${placeholders.join(", ")})) AS new (${quotedColumns.join(", ")})
+    FROM (VALUES (${placeholders.join(", ")})) AS new (${columns.map(quoteIdent).join(", ")})
     LEFT JOIN ${quotedTable} AS existing ON ${joinClause}
     ON CONFLICT (${conflictClause})
     ${updateColumns.length > 0 ? `DO UPDATE SET ${setClause}` : "DO NOTHING"}
