@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { completeJson } from "@/lib/ai/complete";
+import { isAdminAuthorized } from "@/lib/http/adminAuth";
 
 const ARCHETYPES = [
   "identity_anchor",
@@ -56,6 +57,17 @@ Return ONLY a JSON array of exactly 8 objects, no prose before or after, no mark
 - "archetype": exactly one of "identity_anchor", "qualifying_question", "command_with_urgency", "shared_memory", "stakes_claim", "direct_dare", "contrarian_take", "curiosity_gap" — each used exactly once
 - "hook": the actual opening line, written to be spoken aloud`;
 
+async function runHooks(topic: string): Promise<{ hooks: HookItem[] }> {
+  const hooks = await completeJson<unknown>({
+    system: SYSTEM_PROMPT,
+    prompt: `Topic: ${topic}`,
+    // 8 short one-liners, maybe 300-500 tokens of JSON.
+    thinkingBudget: 2000,
+    maxTokens: 4500,
+  }).then(validateHooks);
+  return { hooks };
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
     const body = await request.json().catch(() => null);
@@ -63,16 +75,25 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     if (!topic) {
       return NextResponse.json({ error: "topic (string) is required" }, { status: 400 });
     }
+    return NextResponse.json(await runHooks(topic));
+  } catch (err) {
+    const error = err as Error;
+    console.error("AI hooks failed:", error);
+    return NextResponse.json({ error: `${error.name}: ${error.message}` }, { status: 500 });
+  }
+}
 
-    const hooks = await completeJson<unknown>({
-      system: SYSTEM_PROMPT,
-      prompt: `Topic: ${topic}`,
-      // 8 short one-liners, maybe 300-500 tokens of JSON.
-      thinkingBudget: 2000,
-      maxTokens: 4500,
-    }).then(validateHooks);
-
-    return NextResponse.json({ hooks });
+// Manual-test fallback: /api/ai/hooks?topic=...&secret=<ADMIN_SECRET>
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  if (!isAdminAuthorized(request.nextUrl.searchParams.get("secret"))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+  const topic = request.nextUrl.searchParams.get("topic")?.trim() ?? "";
+  if (!topic) {
+    return NextResponse.json({ error: "?topic= is required" }, { status: 400 });
+  }
+  try {
+    return NextResponse.json(await runHooks(topic));
   } catch (err) {
     const error = err as Error;
     console.error("AI hooks failed:", error);

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProfile } from "@/lib/db/profile";
 import { getPostForModel } from "@/lib/db/posts";
 import { completeJson } from "@/lib/ai/complete";
+import { isAdminAuthorized } from "@/lib/http/adminAuth";
+import { HttpError } from "@/lib/http/errors";
 
 interface ScriptResult {
   hook: string;
@@ -35,54 +37,85 @@ Return ONLY a JSON object, no prose before or after, no markdown fences, with ex
 - "caption": a ready-to-post Instagram caption for this video
 - "notes": short filming/delivery notes — pacing, on-screen text, b-roll suggestions`;
 
+async function runScript(topic: string, modelPostId?: number): Promise<ScriptResult> {
+  let modelPostContext = "";
+  if (modelPostId !== undefined) {
+    const profile = await getProfile();
+    const handle = profile?.handle;
+    if (!handle) {
+      throw new HttpError(400, "No account connected");
+    }
+    // Scoped to handle — can only model on your own past posts, never a
+    // reference post imported from another creator.
+    const modelPost = await getPostForModel(modelPostId, handle);
+    if (!modelPost) {
+      throw new HttpError(404, "modelPostId not found");
+    }
+    modelPostContext = [
+      "",
+      "Model the new script's structure, tone, and pacing on this past post of mine:",
+      `Caption: ${modelPost.caption ?? "(none)"}`,
+      modelPost.script ? `Script: ${modelPost.script}` : "",
+      `Performance: views=${modelPost.views} likes=${modelPost.likes} comments=${modelPost.comments} shares=${modelPost.shares} saves=${modelPost.saves} reach=${modelPost.reach}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  return completeJson<unknown>({
+    system: SYSTEM_PROMPT,
+    prompt: `Topic: ${topic}${modelPostContext}`,
+    // Hook + full script + caption + notes can run a few hundred words.
+    thinkingBudget: 2500,
+    maxTokens: 6000,
+  }).then(validateScript);
+}
+
+function handleError(err: unknown): NextResponse {
+  if (err instanceof HttpError) {
+    return NextResponse.json({ error: err.message }, { status: err.status });
+  }
+  const error = err as Error;
+  console.error("AI script failed:", error);
+  return NextResponse.json({ error: `${error.name}: ${error.message}` }, { status: 500 });
+}
+
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const body = await request.json().catch(() => null);
+  const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
+  if (!topic) {
+    return NextResponse.json({ error: "topic (string) is required" }, { status: 400 });
+  }
+  const modelPostId = body?.modelPostId != null ? Number(body.modelPostId) : undefined;
+  if (modelPostId !== undefined && !Number.isInteger(modelPostId)) {
+    return NextResponse.json({ error: "modelPostId must be an integer" }, { status: 400 });
+  }
+
   try {
-    const body = await request.json().catch(() => null);
-    const topic = typeof body?.topic === "string" ? body.topic.trim() : "";
-    if (!topic) {
-      return NextResponse.json({ error: "topic (string) is required" }, { status: 400 });
-    }
-    const modelPostId = body?.modelPostId != null ? Number(body.modelPostId) : undefined;
-    if (modelPostId !== undefined && !Number.isInteger(modelPostId)) {
-      return NextResponse.json({ error: "modelPostId must be an integer" }, { status: 400 });
-    }
-
-    let modelPostContext = "";
-    if (modelPostId !== undefined) {
-      const profile = await getProfile();
-      const handle = profile?.handle;
-      if (!handle) {
-        return NextResponse.json({ error: "No account connected" }, { status: 400 });
-      }
-      // Scoped to handle — can only model on your own past posts, never a
-      // reference post imported from another creator.
-      const modelPost = await getPostForModel(modelPostId, handle);
-      if (!modelPost) {
-        return NextResponse.json({ error: "modelPostId not found" }, { status: 404 });
-      }
-      modelPostContext = [
-        "",
-        "Model the new script's structure, tone, and pacing on this past post of mine:",
-        `Caption: ${modelPost.caption ?? "(none)"}`,
-        modelPost.script ? `Script: ${modelPost.script}` : "",
-        `Performance: views=${modelPost.views} likes=${modelPost.likes} comments=${modelPost.comments} shares=${modelPost.shares} saves=${modelPost.saves} reach=${modelPost.reach}`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-    }
-
-    const result = await completeJson<unknown>({
-      system: SYSTEM_PROMPT,
-      prompt: `Topic: ${topic}${modelPostContext}`,
-      // Hook + full script + caption + notes can run a few hundred words.
-      thinkingBudget: 2500,
-      maxTokens: 6000,
-    }).then(validateScript);
-
-    return NextResponse.json(result);
+    return NextResponse.json(await runScript(topic, modelPostId));
   } catch (err) {
-    const error = err as Error;
-    console.error("AI script failed:", error);
-    return NextResponse.json({ error: `${error.name}: ${error.message}` }, { status: 500 });
+    return handleError(err);
+  }
+}
+
+// Manual-test fallback: /api/ai/script?topic=...&modelPostId=...&secret=<ADMIN_SECRET>
+export async function GET(request: NextRequest): Promise<NextResponse> {
+  if (!isAdminAuthorized(request.nextUrl.searchParams.get("secret"))) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
+  }
+  const topic = request.nextUrl.searchParams.get("topic")?.trim() ?? "";
+  if (!topic) {
+    return NextResponse.json({ error: "?topic= is required" }, { status: 400 });
+  }
+  const modelPostIdParam = request.nextUrl.searchParams.get("modelPostId");
+  const modelPostId = modelPostIdParam ? Number(modelPostIdParam) : undefined;
+  if (modelPostId !== undefined && !Number.isInteger(modelPostId)) {
+    return NextResponse.json({ error: "modelPostId must be an integer" }, { status: 400 });
+  }
+
+  try {
+    return NextResponse.json(await runScript(topic, modelPostId));
+  } catch (err) {
+    return handleError(err);
   }
 }
