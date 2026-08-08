@@ -46,6 +46,136 @@ export async function getMedianMetrics(
   );
 }
 
+export interface MedianRates {
+  likeRate: number | null;
+  saveRate: number | null;
+  shareRate: number | null;
+  commentRate: number | null;
+  viewToReachRate: number | null;
+  watchPct: number | null;
+}
+
+// Rates (saves per reach, etc.) computed per-post, then medianed in SQL via
+// percentile_cont — same rule as raw-metric medians: never sort a pulled
+// array in JS to find this.
+export async function getMedianRates(handle: string): Promise<MedianRates> {
+  const row = await queryOne<{
+    like_rate: number | null;
+    save_rate: number | null;
+    share_rate: number | null;
+    comment_rate: number | null;
+    view_to_reach_rate: number | null;
+    watch_pct: number | null;
+  }>(
+    `
+    SELECT
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY likes::float8 / NULLIF(reach, 0))    AS like_rate,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY saves::float8 / NULLIF(reach, 0))    AS save_rate,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY shares::float8 / NULLIF(reach, 0))   AS share_rate,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY comments::float8 / NULLIF(reach, 0)) AS comment_rate,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY views::float8 / NULLIF(reach, 0))
+        FILTER (WHERE views > 0)                                                       AS view_to_reach_rate,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY avg_watch_s / NULLIF(duration_s, 0))
+        FILTER (WHERE avg_watch_s IS NOT NULL AND duration_s IS NOT NULL)              AS watch_pct
+    FROM posts
+    WHERE handle = $1
+    `,
+    [handle],
+  );
+
+  return {
+    likeRate: row?.like_rate ?? null,
+    saveRate: row?.save_rate ?? null,
+    shareRate: row?.share_rate ?? null,
+    commentRate: row?.comment_rate ?? null,
+    viewToReachRate: row?.view_to_reach_rate ?? null,
+    watchPct: row?.watch_pct ?? null,
+  };
+}
+
+export interface PostForReview {
+  id: number;
+  caption: string | null;
+  posted_at: string | null;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  reach: number;
+  duration_s: number | null;
+  avg_watch_s: number | null;
+  total_watch_s: number | null;
+}
+
+// Scoped to `handle` at the fetch itself, not just at the caller's
+// discretion — a postId from another creator's imported reference posts
+// simply doesn't resolve, by construction, not by remembering to filter.
+export async function getPostForReview(id: number, handle: string): Promise<PostForReview | undefined> {
+  return queryOne<PostForReview>(
+    `
+    SELECT id, caption, posted_at, views, likes, comments, shares, saves, reach,
+           duration_s, avg_watch_s, total_watch_s
+    FROM posts
+    WHERE id = $1 AND handle = $2
+    `,
+    [id, handle],
+  );
+}
+
+export interface PostForModel {
+  id: number;
+  caption: string | null;
+  script: string | null;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  reach: number;
+}
+
+export async function getPostForModel(id: number, handle: string): Promise<PostForModel | undefined> {
+  return queryOne<PostForModel>(
+    `
+    SELECT id, caption, script, views, likes, comments, shares, saves, reach
+    FROM posts
+    WHERE id = $1 AND handle = $2
+    `,
+    [id, handle],
+  );
+}
+
+export interface PostForAnalysis {
+  id: number;
+  posted_at: string | null;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  reach: number;
+  avg_watch_s: number | null;
+  duration_s: number | null;
+  caption: string | null;
+}
+
+// Capped at 100 posts to keep the prompt bounded as the library grows —
+// the most recent 100 is plenty for pattern-finding.
+export async function getPostsForAnalysis(handle: string, limit = 100): Promise<PostForAnalysis[]> {
+  const postedAt = postedAtExpr();
+  return query<PostForAnalysis>(
+    `
+    SELECT id, posted_at, views, likes, comments, shares, saves, reach, avg_watch_s, duration_s, caption
+    FROM posts
+    WHERE handle = $1
+    ORDER BY ${postedAt} DESC
+    LIMIT $2
+    `,
+    [handle, limit],
+  );
+}
+
 export interface PostRow {
   id: number;
   platform: string;
