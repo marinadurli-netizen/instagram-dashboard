@@ -65,9 +65,10 @@ async function runScript(topic: string, modelPostId?: number): Promise<ScriptRes
   return completeJson<unknown>({
     system: SYSTEM_PROMPT,
     prompt: `Topic: ${topic}${modelPostContext}`,
-    // Hook + full script + caption + notes can run a few hundred words.
-    thinkingBudget: 2500,
-    maxTokens: 6000,
+    // Hook + full script + caption + notes can run a few hundred words, and
+    // thinking shares this budget with them.
+    effort: "medium",
+    maxTokens: 12000,
   }).then(validateScript);
 }
 

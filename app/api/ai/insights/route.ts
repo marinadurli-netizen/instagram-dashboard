@@ -3,6 +3,7 @@ import { query } from "@/lib/db/query";
 import { getProfile } from "@/lib/db/profile";
 import { getPostsForAnalysis } from "@/lib/db/posts";
 import { completeJson } from "@/lib/ai/complete";
+import { AI_MODEL } from "@/lib/ai/client";
 import { formatPostsTable } from "@/lib/ai/format";
 import { SIGNAL_READING_GUIDE } from "@/lib/ai/signals";
 import { isAdminAuthorized } from "@/lib/http/adminAuth";
@@ -63,10 +64,11 @@ async function runInsights(): Promise<{ patterns: Pattern[] }> {
   const patterns = await completeJson<unknown>({
     system: SYSTEM_PROMPT,
     prompt: `Here are ${posts.length} posts:\n\n${formatPostsTable(posts)}`,
-    // 4 short objects is maybe 600-1000 tokens of actual JSON; budget the
-    // thinking well above that and max_tokens well above the budget.
-    thinkingBudget: 4000,
-    maxTokens: 8000,
+    // Finding real cross-library patterns is the most reasoning-heavy of the
+    // four routes. 4 short objects is maybe 600-1000 tokens of actual JSON,
+    // but thinking shares max_tokens with it — hence the wide margin.
+    effort: "high",
+    maxTokens: 16000,
   }).then(validatePatterns);
 
   // "Replace the stored set each run" — these rows (post_id IS NULL) are
@@ -80,7 +82,7 @@ async function runInsights(): Promise<{ patterns: Pattern[] }> {
         pattern.title,
         pattern.body,
         pattern.headline_metric,
-        process.env.ANTHROPIC_MODEL ?? "claude-sonnet-5",
+        AI_MODEL,
       ],
     );
   }

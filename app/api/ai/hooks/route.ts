@@ -61,9 +61,10 @@ async function runHooks(topic: string): Promise<{ hooks: HookItem[] }> {
   const hooks = await completeJson<unknown>({
     system: SYSTEM_PROMPT,
     prompt: `Topic: ${topic}`,
-    // 8 short one-liners, maybe 300-500 tokens of JSON.
-    thinkingBudget: 2000,
-    maxTokens: 4500,
+    // 8 short one-liners, maybe 300-500 tokens of JSON — but thinking shares
+    // this budget, so leave it plenty of room.
+    effort: "medium",
+    maxTokens: 8000,
   }).then(validateHooks);
   return { hooks };
 }

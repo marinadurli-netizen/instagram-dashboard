@@ -1,17 +1,19 @@
 import { AI_MODEL, getAnthropicClient } from "./client";
 import { extractJson } from "./json";
 
+/** Thinking depth / overall token spend. Higher costs more and takes longer. */
+export type Effort = "low" | "medium" | "high" | "xhigh" | "max";
+
 export interface CompleteJsonOptions {
   system: string;
   prompt: string;
-  /** Tokens reserved for the model's internal reasoning, not part of the visible output. */
-  thinkingBudget: number;
+  effort: Effort;
   /**
-   * Must be well above thinkingBudget + the JSON you actually expect back.
-   * With extended thinking on, the model spends part of max_tokens on an
-   * internal thinking block before it ever writes the JSON — a tight
-   * limit here doesn't shrink the thinking, it truncates the answer, and
-   * a truncated answer looks exactly like a parser bug from the outside.
+   * Must be well above the JSON you actually expect back. Thinking is on by
+   * default on current models and `max_tokens` caps thinking *plus* the
+   * response text together — a tight limit doesn't shrink the thinking, it
+   * truncates the answer, and a truncated answer looks exactly like a parser
+   * bug from the outside.
    */
   maxTokens: number;
 }
@@ -19,27 +21,28 @@ export interface CompleteJsonOptions {
 export async function completeJson<T>({
   system,
   prompt,
-  thinkingBudget,
+  effort,
   maxTokens,
 }: CompleteJsonOptions): Promise<T> {
-  if (maxTokens <= thinkingBudget) {
-    throw new Error(
-      `maxTokens (${maxTokens}) must be greater than thinkingBudget (${thinkingBudget}) or there's no room left for the actual output`,
-    );
-  }
-
   const client = getAnthropicClient();
   const response = await client.messages.create({
     model: AI_MODEL,
     max_tokens: maxTokens,
-    thinking: { type: "enabled", budget_tokens: thinkingBudget },
+    // Adaptive thinking: the model decides how much to think per request.
+    // (The older `{type: "enabled", budget_tokens: N}` form is rejected with
+    // a 400 on current models — depth is controlled by `effort` instead.)
+    thinking: { type: "adaptive" },
+    output_config: { effort },
     system,
     messages: [{ role: "user", content: prompt }],
   });
 
-  // With thinking enabled, content interleaves "thinking" blocks with the
-  // final "text" block — the answer is the last text block, not the first
-  // content block overall.
+  if (response.stop_reason === "refusal") {
+    throw new Error("The model declined to answer this request.");
+  }
+
+  // Thinking blocks interleave with the final text block, so the answer is
+  // the last text block, not the first content block overall.
   const textBlocks = response.content.filter((block) => block.type === "text");
   const lastText = textBlocks.at(-1);
   if (!lastText || lastText.type !== "text") {
