@@ -56,9 +56,11 @@ async function runReview(postId: number): Promise<Verdict> {
   const result = await completeJson<unknown>({
     system: SYSTEM_PROMPT,
     prompt: formatPostForReview(post, medians),
-    // A verdict + a few sentences is maybe 150-300 tokens of JSON.
-    thinkingBudget: 2000,
-    maxTokens: 4000,
+    // A verdict + a few sentences is maybe 150-300 tokens of JSON, but the
+    // comparison against medians is worth thinking about — and thinking
+    // shares this budget with the answer.
+    effort: "medium",
+    maxTokens: 8000,
   }).then(validateVerdict);
 
   await query("UPDATE posts SET review = $1, verdict = $2 WHERE id = $3 AND handle = $4", [
