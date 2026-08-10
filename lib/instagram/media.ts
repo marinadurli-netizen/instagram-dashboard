@@ -5,7 +5,7 @@ import { FEED_METRICS, parseInsightsBody, type MetricsValues, type RawInsightMet
 // (`insights.metric(...)`) rather than a separate per-post call — one
 // request per page instead of one per post. The metric list has to be the
 // same for every row in the page, so it's capped to FEED_METRICS: the
-// subset valid for every non-story media type. `plays` and the Reels
+// subset valid for every non-story media type. `views` and the Reels
 // watch-time metrics are video-only — requesting them here for a plain
 // image post would fail that post's *entire* insights expansion (Graph API
 // insights calls are all-or-nothing per request, confirmed by production

@@ -7,15 +7,18 @@
 
 // The subset valid for every non-story media type (image or video, feed or
 // Reels) — safe to request as a field expansion on the /media list call
-// itself, since it never varies per row. `plays` and the Reels watch-time
+// itself, since it never varies per row. `views` and the Reels watch-time
 // metrics are video-only and would blow up that expansion for a plain
 // image post, so they're deliberately excluded here and fetched instead by
 // the per-post backfill pass, which already knows each post's real type.
 export const FEED_METRICS = ["reach", "saved", "shares", "comments", "likes", "total_interactions"];
-const FEED_VIDEO_METRICS = [...FEED_METRICS, "plays"];
+// Confirmed against a live 400 error from the Graph API: this account's API
+// version rejects the older `plays` metric name ("metric[6] must be one of
+// the following values: ... views ...") — `views` is its replacement.
+const FEED_VIDEO_METRICS = [...FEED_METRICS, "views"];
 const REELS_METRICS = [
   ...FEED_METRICS,
-  "plays",
+  "views",
   "ig_reels_avg_watch_time",
   "ig_reels_video_view_total_time",
 ];
@@ -92,7 +95,7 @@ export function parseInsightsBody(data: RawInsightMetric[]): MetricsValues {
       case "likes":
         result.likes = value;
         break;
-      case "plays":
+      case "views":
         result.views = value;
         break;
       case "ig_reels_avg_watch_time":
