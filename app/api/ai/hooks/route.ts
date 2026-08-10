@@ -16,6 +16,7 @@ const ARCHETYPES = [
 interface HookItem {
   archetype: (typeof ARCHETYPES)[number];
   hook: string;
+  rationale: string;
 }
 
 function validateHooks(value: unknown): HookItem[] {
@@ -26,10 +27,12 @@ function validateHooks(value: unknown): HookItem[] {
   const result = value.map((item, i) => {
     const archetype = (item as Record<string, unknown>)?.archetype;
     const hook = (item as Record<string, unknown>)?.hook;
+    const rationale = (item as Record<string, unknown>)?.rationale;
     if (
       typeof archetype !== "string" ||
       !ARCHETYPES.includes(archetype as (typeof ARCHETYPES)[number]) ||
-      typeof hook !== "string"
+      typeof hook !== "string" ||
+      typeof rationale !== "string"
     ) {
       throw new Error(`Hook ${i} is malformed: ${JSON.stringify(item).slice(0, 200)}`);
     }
@@ -55,14 +58,15 @@ const SYSTEM_PROMPT = `You are a hook writer for short-form video. Given a topic
 
 Return ONLY a JSON array of exactly 8 objects, no prose before or after, no markdown fences. Each object must have exactly these keys:
 - "archetype": exactly one of "identity_anchor", "qualifying_question", "command_with_urgency", "shared_memory", "stakes_claim", "direct_dare", "contrarian_take", "curiosity_gap" — each used exactly once
-- "hook": the actual opening line, written to be spoken aloud`;
+- "hook": the actual opening line, written to be spoken aloud
+- "rationale": one sentence on why this hook works for this specific topic`;
 
 async function runHooks(topic: string): Promise<{ hooks: HookItem[] }> {
   const hooks = await completeJson<unknown>({
     system: SYSTEM_PROMPT,
     prompt: `Topic: ${topic}`,
-    // 8 short one-liners, maybe 300-500 tokens of JSON — but thinking shares
-    // this budget, so leave it plenty of room.
+    // 8 one-liners plus a one-sentence rationale each, maybe 600-900 tokens
+    // of JSON — but thinking shares this budget, so leave it plenty of room.
     effort: "medium",
     maxTokens: 8000,
   }).then(validateHooks);

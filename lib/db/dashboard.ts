@@ -129,6 +129,45 @@ export async function getRecentPostsRail(handle: string, limit = 20): Promise<Ra
   );
 }
 
+// Newest-first, capped at 500 — plenty for a personal account's full
+// history without an unbounded query.
+export async function getAllPostsHistory(handle: string): Promise<RailPost[]> {
+  const postedAt = postedAtExpr();
+  return query<RailPost>(
+    `
+    SELECT id, thumb_url, views, likes, comments, shares, saves, reach,
+           avg_watch_s, total_watch_s, duration_s, caption, posted_at, url
+    FROM posts
+    WHERE handle = $1
+    ORDER BY ${postedAt} DESC
+    LIMIT 500
+    `,
+    [handle],
+  );
+}
+
+export interface PickerPost {
+  id: number;
+  thumb_url: string | null;
+  caption: string | null;
+}
+
+// Lightweight post list for a picker UI (Discover Boards) — no metrics,
+// just enough to render a recognizable tile.
+export async function getPostsForPicker(handle: string): Promise<PickerPost[]> {
+  const postedAt = postedAtExpr();
+  return query<PickerPost>(
+    `
+    SELECT id, thumb_url, caption
+    FROM posts
+    WHERE handle = $1
+    ORDER BY ${postedAt} DESC
+    LIMIT 200
+    `,
+    [handle],
+  );
+}
+
 export interface InsightCard {
   id: number;
   kind: string;
@@ -137,19 +176,21 @@ export interface InsightCard {
   created_at: string;
 }
 
-// Insights aren't tagged with a handle of their own — they're scoped by
-// joining back to the post they're about, so an insight generated for a
-// reference post from another creator can never surface here. (A
-// cross-library insight with no post_id has no way to prove it's about
-// *your* library yet, so it's excluded too — safe default until pattern
-// analysis gets its own handle scoping.)
+// Insights aren't tagged with a handle of their own. A per-post insight
+// (post_id set) is scoped by joining back to the post it's about, so one
+// generated for a reference post from another creator can never surface
+// here. A cross-library pattern (post_id NULL, from /api/ai/insights) has
+// no post to join against — but in this single-account app it's always
+// generated from *your* library (getPostsForAnalysis is handle-scoped at
+// generation time), so it's included rather than dropped. An inner join
+// here would silently exclude every cross-library pattern forever.
 export async function getInsightCards(handle: string, limit = 10): Promise<InsightCard[]> {
   return query<InsightCard>(
     `
     SELECT insights.id, insights.kind, insights.content, insights.post_id, insights.created_at
     FROM insights
-    JOIN posts ON posts.id = insights.post_id
-    WHERE posts.handle = $1
+    LEFT JOIN posts ON posts.id = insights.post_id
+    WHERE insights.post_id IS NULL OR posts.handle = $1
     ORDER BY insights.created_at DESC
     LIMIT $2
     `,

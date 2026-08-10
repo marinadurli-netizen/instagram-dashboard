@@ -3,7 +3,21 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Menu, X, type LucideIcon } from "lucide-react";
+import {
+  BookOpen,
+  Clapperboard,
+  Grid3x3,
+  History,
+  LayoutDashboard,
+  Lightbulb,
+  ListVideo,
+  Menu,
+  Mic,
+  Search,
+  Sparkles,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 
 interface NavItem {
   label: string;
@@ -11,9 +25,18 @@ interface NavItem {
   icon: LucideIcon;
 }
 
-// Add future tools (script writer, hook generator, teleprompter, boards)
-// here — the shell and mobile drawer already handle any number of items.
-const NAV_ITEMS: NavItem[] = [{ label: "Dashboard", href: "/dashboard", icon: LayoutDashboard }];
+const NAV_ITEMS: NavItem[] = [
+  { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { label: "Autopsy", href: "/autopsy", icon: Search },
+  { label: "Pattern Reader", href: "/patterns", icon: Lightbulb },
+  { label: "Script Writer", href: "/scripts", icon: BookOpen },
+  { label: "Hook Lab", href: "/hooks", icon: Mic },
+  { label: "Session Prep", href: "/session-prep", icon: Clapperboard },
+  { label: "Session Mode", href: "/session", icon: ListVideo },
+  { label: "Discover Boards", href: "/boards", icon: Grid3x3 },
+  { label: "Inspiration", href: "/inspiration", icon: Sparkles },
+  { label: "History", href: "/history", icon: History },
+];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);

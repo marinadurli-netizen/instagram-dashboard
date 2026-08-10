@@ -243,3 +243,72 @@ export async function listRecentPosts(handle: string, windowDays: number): Promi
     [handle, todayKey(), windowDays],
   );
 }
+
+export interface AutopsyPost {
+  id: number;
+  thumb_url: string | null;
+  caption: string | null;
+  posted_at: string | null;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  reach: number;
+}
+
+// Worst-first list of posts that underperformed this creator's own median
+// views — an empty result (median null, i.e. no posts yet) is a valid,
+// unremarkable case, not an error.
+export async function getUnderperformingPosts(handle: string): Promise<AutopsyPost[]> {
+  const medianRow = await queryOne<{ median_views: number | null }>(
+    "SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY views) AS median_views FROM posts WHERE handle = $1",
+    [handle],
+  );
+  const medianViews = medianRow?.median_views;
+  if (medianViews == null) return [];
+
+  return query<AutopsyPost>(
+    `
+    SELECT id, thumb_url, caption, posted_at, views, likes, comments, shares, saves, reach
+    FROM posts
+    WHERE handle = $1 AND views < $2
+    ORDER BY views ASC
+    `,
+    [handle, medianViews],
+  );
+}
+
+export interface PostDetail {
+  id: number;
+  caption: string | null;
+  posted_at: string | null;
+  url: string | null;
+  thumb_url: string | null;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  reach: number;
+  avg_watch_s: number | null;
+  total_watch_s: number | null;
+  duration_s: number | null;
+  media_type: string | null;
+  review: string | null;
+  verdict: string | null;
+}
+
+// Scoped to `handle` at the fetch itself, same as getPostForReview — a
+// reference post imported from another creator simply doesn't resolve.
+export async function getPostDetail(id: number, handle: string): Promise<PostDetail | undefined> {
+  return queryOne<PostDetail>(
+    `
+    SELECT id, caption, posted_at, url, thumb_url, views, likes, comments, shares, saves, reach,
+           avg_watch_s, total_watch_s, duration_s, media_type, review, verdict
+    FROM posts
+    WHERE id = $1 AND handle = $2
+    `,
+    [id, handle],
+  );
+}
