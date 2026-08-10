@@ -6,6 +6,7 @@ import {
   getRecentAverages,
   getRecentPostsRail,
 } from "@/lib/db/dashboard";
+import { getMedianRates } from "@/lib/db/posts";
 import { AveragesRow } from "../../components/AveragesRow";
 import { InsightCards } from "../../components/InsightCards";
 import { PostingHeatmap } from "../../components/PostingHeatmap";
@@ -58,12 +59,13 @@ async function renderDashboard() {
   // Every one of these is scoped to `handle` — reference posts imported
   // from other creators live in the same posts table under a different
   // handle and must never surface here.
-  const [stats, averages, posts, insights, heatmap] = await Promise.all([
+  const [stats, averages, posts, insights, heatmap, medianRates] = await Promise.all([
     getAllTimeStats(handle),
     getRecentAverages(handle),
     getRecentPostsRail(handle),
     getInsightCards(handle),
     getHeatmap(handle),
+    getMedianRates(handle),
   ]);
 
   return (
@@ -76,7 +78,7 @@ async function renderDashboard() {
         totalLikes={stats.likes}
         totalPosts={stats.posts}
       />
-      <RecentPostsRail posts={posts} />
+      <RecentPostsRail posts={posts} medians={medianRates} />
       <InsightCards insights={insights} />
       <StatTiles stats={stats} />
       <AveragesRow averages={averages} />

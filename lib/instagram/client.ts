@@ -55,11 +55,16 @@ async function parseJsonResponse(res: Response): Promise<any> {
   }
 }
 
-export async function graphFetch<T>(
+// Almost every call targets GRAPH_API_BASE (graph.facebook.com); the one
+// exception is the Instagram long-lived-token refresh endpoint, which lives
+// on graph.instagram.com instead — hence the configurable base here rather
+// than hardcoding it, with graphFetch() below as the common-case wrapper.
+export async function graphFetchAt<T>(
+  baseUrl: string,
   path: string,
   params: Record<string, string | undefined>,
 ): Promise<T> {
-  const url = new URL(`${GRAPH_API_BASE}${path}`);
+  const url = new URL(`${baseUrl}${path}`);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) url.searchParams.set(key, value);
   }
@@ -77,6 +82,13 @@ export async function graphFetch<T>(
   }
 
   return body as T;
+}
+
+export async function graphFetch<T>(
+  path: string,
+  params: Record<string, string | undefined>,
+): Promise<T> {
+  return graphFetchAt<T>(GRAPH_API_BASE, path, params);
 }
 
 export interface BatchRequestItem {

@@ -61,6 +61,7 @@ async function handleCallback(request: NextRequest): Promise<NextResponse> {
       instagram_account_id: ig.id,
       instagram_access_token: page.access_token,
       instagram_token_expires_at: null,
+      instagram_token_refreshed_at: new Date(),
       facebook_page_id: page.id,
     },
   });

@@ -41,3 +41,22 @@ export function localDateKey(date: Date): string {
 export function todayKey(): string {
   return localDateKey(new Date());
 }
+
+// Deterministic, stable fallback for an imported item whose real timestamp
+// is missing. Instagram's own /media edge always returns `timestamp`, so
+// this should never actually fire there — but the posts table is a
+// generic (platform, external_id) schema, and defaulting a missing
+// timestamp to "now" would collapse a whole import onto one calendar day
+// and destroy every trend derived from posted_at. Hashing the platform id
+// instead spreads missing-timestamp items across history, and is stable
+// across repeated syncs of the same id (idempotent upserts stay idempotent).
+export function derivedDateKeyFromId(externalId: string): string {
+  const EPOCH_MS = Date.UTC(2010, 0, 1); // before Instagram existed publicly
+  const spanDays = Math.max(1, Math.floor((Date.now() - EPOCH_MS) / 86_400_000));
+  let hash = 0;
+  for (let i = 0; i < externalId.length; i++) {
+    hash = (hash * 31 + externalId.charCodeAt(i)) >>> 0;
+  }
+  const offsetDays = hash % spanDays;
+  return localDateKey(new Date(EPOCH_MS + offsetDays * 86_400_000));
+}

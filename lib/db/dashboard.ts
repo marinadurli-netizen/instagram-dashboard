@@ -99,16 +99,27 @@ export interface RailPost {
   id: number;
   thumb_url: string | null;
   views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  reach: number;
+  avg_watch_s: number | null;
+  total_watch_s: number | null;
+  duration_s: number | null;
   caption: string | null;
   posted_at: string | null;
   url: string | null;
 }
 
+// Selects every raw metric (not just `views`) so each card can open a
+// per-post analytics panel without a second round-trip.
 export async function getRecentPostsRail(handle: string, limit = 20): Promise<RailPost[]> {
   const postedAt = postedAtExpr();
   return query<RailPost>(
     `
-    SELECT id, thumb_url, views, caption, posted_at, url
+    SELECT id, thumb_url, views, likes, comments, shares, saves, reach,
+           avg_watch_s, total_watch_s, duration_s, caption, posted_at, url
     FROM posts
     WHERE handle = $1
     ORDER BY ${postedAt} DESC
