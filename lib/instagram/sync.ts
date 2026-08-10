@@ -8,6 +8,7 @@ import { fetchProfile } from "./profile";
 import { refreshLongLivedInstagramToken } from "./oauth";
 
 export interface SyncSummary {
+  skipped: boolean;
   postsUpserted: number;
   metricsUpserted: number;
   backfillAttempted: number;
@@ -16,6 +17,16 @@ export interface SyncSummary {
   tokenRefreshed: boolean;
 }
 
+const SKIPPED_SUMMARY: SyncSummary = {
+  skipped: true,
+  postsUpserted: 0,
+  metricsUpserted: 0,
+  backfillAttempted: 0,
+  backfillErrors: 0,
+  profileSynced: false,
+  tokenRefreshed: false,
+};
+
 interface ProfileRow {
   instagram_account_id: string | null;
   instagram_access_token: string | null;
@@ -23,6 +34,7 @@ interface ProfileRow {
   handle: string | null;
   display_name: string | null;
   bio: string | null;
+  last_synced_at: string | null;
 }
 
 const PLATFORM = "instagram";
@@ -39,19 +51,39 @@ const TOKEN_REFRESH_THRESHOLD_DAYS = 7;
 // drain gradually across runs instead.
 const WATCH_TIME_BACKFILL_CAP = 25;
 
+// A manual "sync now" click and the nightly cron can land within seconds of
+// each other — the manual trigger returns immediately (see
+// /api/sync/trigger) so nothing stops a second click, or the cron firing
+// mid-manual-sync, from starting an overlapping run. Since last_synced_at
+// only moves once a run *completes*, this window only guards against two
+// runs starting close together, not two already-running syncs racing each
+// other — acceptable here: one cron a day plus occasional manual clicks
+// from a single user is not a scenario where that residual race matters.
+const SYNC_GUARD_WINDOW_MINUTES = 10;
+
 function isTokenStale(refreshedAt: string | null): boolean {
   if (!refreshedAt) return true;
   const ageMs = Date.now() - new Date(refreshedAt).getTime();
   return ageMs > TOKEN_REFRESH_THRESHOLD_DAYS * 86_400_000;
 }
 
+function syncedRecently(lastSyncedAt: string | null): boolean {
+  if (!lastSyncedAt) return false;
+  const ageMs = Date.now() - new Date(lastSyncedAt).getTime();
+  return ageMs < SYNC_GUARD_WINDOW_MINUTES * 60_000;
+}
+
 // Single-account app: there is exactly one profile row (id = 1), so there's
 // no "sync all accounts" concept — just sync the one connected account.
 export async function sync(): Promise<SyncSummary> {
   const profile = await queryOne<ProfileRow>(
-    `SELECT instagram_account_id, instagram_access_token, instagram_token_refreshed_at, handle, display_name, bio
+    `SELECT instagram_account_id, instagram_access_token, instagram_token_refreshed_at, handle, display_name, bio, last_synced_at
      FROM profile WHERE id = 1`,
   );
+
+  if (syncedRecently(profile?.last_synced_at ?? null)) {
+    return SKIPPED_SUMMARY;
+  }
 
   // The token can come from the OAuth-managed DB column or, per the sync
   // spec, an env var. The DB always wins when present — once a token has
@@ -185,5 +217,13 @@ export async function sync(): Promise<SyncSummary> {
     }
   }
 
-  return { postsUpserted, metricsUpserted, backfillAttempted, backfillErrors, profileSynced, tokenRefreshed };
+  return {
+    skipped: false,
+    postsUpserted,
+    metricsUpserted,
+    backfillAttempted,
+    backfillErrors,
+    profileSynced,
+    tokenRefreshed,
+  };
 }
