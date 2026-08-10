@@ -1,7 +1,8 @@
 "use client";
 
 import { EditableText } from "./EditableText";
-import { formatCount } from "./format";
+import { SyncButton } from "./SyncButton";
+import { formatCount, formatRelativeTime } from "./format";
 import { saveProfileField } from "../actions/profile";
 
 interface ProfileHeaderProps {
@@ -11,6 +12,7 @@ interface ProfileHeaderProps {
   followers: number | null;
   totalLikes: number;
   totalPosts: number;
+  lastSyncedAt: string | null;
 }
 
 async function saveFollowers(value: string): Promise<void> {
@@ -31,6 +33,7 @@ export function ProfileHeader({
   followers,
   totalLikes,
   totalPosts,
+  lastSyncedAt,
 }: ProfileHeaderProps) {
   const initials =
     (displayName || handle || "?")
@@ -46,7 +49,16 @@ export function ProfileHeader({
       className="rounded-2xl border p-6"
       style={{ borderColor: "var(--border)", background: "var(--panel)" }}
     >
-      <div className="flex items-start gap-4">
+      <div className="flex items-center justify-end gap-2">
+        {lastSyncedAt && (
+          <span className="text-xs" style={{ color: "var(--faint)" }}>
+            Synced {formatRelativeTime(lastSyncedAt)}
+          </span>
+        )}
+        <SyncButton lastSyncedAt={lastSyncedAt} />
+      </div>
+
+      <div className="mt-4 flex items-start gap-4">
         <div
           className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full text-xl font-semibold"
           style={{ background: "var(--panel-2)", color: "var(--text)" }}

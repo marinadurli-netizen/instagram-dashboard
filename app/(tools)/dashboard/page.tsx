@@ -77,6 +77,10 @@ async function renderDashboard() {
         followers={profile.followers}
         totalLikes={stats.likes}
         totalPosts={stats.posts}
+        // Passed through the RSC boundary as a plain ISO string, matching
+        // exactly what /api/sync/status returns via JSON.stringify — the
+        // button compares the two directly to detect a completed sync.
+        lastSyncedAt={profile.last_synced_at ? new Date(profile.last_synced_at).toISOString() : null}
       />
       <RecentPostsRail posts={posts} medians={medianRates} />
       <InsightCards insights={insights} />
