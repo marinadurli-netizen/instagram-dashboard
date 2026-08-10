@@ -1,10 +1,25 @@
-import { graphFetch } from "./client";
+import { graphFetch, graphFetchAt } from "./client";
 import { getMetaAppId, getMetaAppSecret } from "./config";
 
 interface OAuthTokenResponse {
   access_token: string;
   token_type?: string;
   expires_in?: number;
+}
+
+// The Instagram API's own long-lived-token refresh lives on a different
+// host (graph.instagram.com, not graph.facebook.com) and only applies to
+// tokens minted through Instagram Login directly — a Page access token
+// from the Facebook Login for Business flow below simply doesn't support
+// this endpoint and will 400, which callers should treat as "nothing to
+// refresh" rather than a fatal error.
+const INSTAGRAM_GRAPH_BASE = "https://graph.instagram.com";
+
+export async function refreshLongLivedInstagramToken(token: string): Promise<OAuthTokenResponse> {
+  return graphFetchAt<OAuthTokenResponse>(INSTAGRAM_GRAPH_BASE, "/refresh_access_token", {
+    grant_type: "ig_refresh_token",
+    access_token: token,
+  });
 }
 
 export async function exchangeCodeForToken(code: string, redirectUri: string): Promise<string> {

@@ -8,12 +8,15 @@ export interface Profile {
   avatar_url: string | null;
   bio: string | null;
   followers: number | null;
+  media_count: number | null;
   timezone: string;
+  last_synced_at: string | null;
 }
 
 export async function getProfile(): Promise<Profile | undefined> {
   return queryOne<Profile>(
-    "SELECT id, display_name, handle, avatar_url, bio, followers, timezone FROM profile WHERE id = 1",
+    `SELECT id, display_name, handle, avatar_url, bio, followers, media_count, timezone, last_synced_at
+     FROM profile WHERE id = 1`,
   );
 }
 

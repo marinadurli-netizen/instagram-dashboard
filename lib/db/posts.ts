@@ -51,6 +51,7 @@ export interface MedianRates {
   saveRate: number | null;
   shareRate: number | null;
   commentRate: number | null;
+  engagementRate: number | null;
   viewToReachRate: number | null;
   watchPct: number | null;
 }
@@ -64,6 +65,7 @@ export async function getMedianRates(handle: string): Promise<MedianRates> {
     save_rate: number | null;
     share_rate: number | null;
     comment_rate: number | null;
+    engagement_rate: number | null;
     view_to_reach_rate: number | null;
     watch_pct: number | null;
   }>(
@@ -73,6 +75,8 @@ export async function getMedianRates(handle: string): Promise<MedianRates> {
       percentile_cont(0.5) WITHIN GROUP (ORDER BY saves::float8 / NULLIF(reach, 0))    AS save_rate,
       percentile_cont(0.5) WITHIN GROUP (ORDER BY shares::float8 / NULLIF(reach, 0))   AS share_rate,
       percentile_cont(0.5) WITHIN GROUP (ORDER BY comments::float8 / NULLIF(reach, 0)) AS comment_rate,
+      percentile_cont(0.5) WITHIN GROUP (ORDER BY (likes + comments + shares + saves)::float8 / NULLIF(reach, 0))
+                                                                                        AS engagement_rate,
       percentile_cont(0.5) WITHIN GROUP (ORDER BY views::float8 / NULLIF(reach, 0))
         FILTER (WHERE views > 0)                                                       AS view_to_reach_rate,
       percentile_cont(0.5) WITHIN GROUP (ORDER BY avg_watch_s / NULLIF(duration_s, 0))
@@ -88,9 +92,40 @@ export async function getMedianRates(handle: string): Promise<MedianRates> {
     saveRate: row?.save_rate ?? null,
     shareRate: row?.share_rate ?? null,
     commentRate: row?.comment_rate ?? null,
+    engagementRate: row?.engagement_rate ?? null,
     viewToReachRate: row?.view_to_reach_rate ?? null,
     watchPct: row?.watch_pct ?? null,
   };
+}
+
+export interface WatchTimeBackfillCandidate {
+  id: number;
+  external_id: string;
+  media_type: string;
+  media_product_type: string | null;
+}
+
+// Prioritizes posts that have never had the video-only metrics (views,
+// watch-time) backfilled, then — once every post has been touched at least
+// once — the most recently posted ones, since those are the ones whose
+// numbers are still moving. Capped by the caller so a single sync run never
+// burns its whole request budget on backfill; whatever doesn't fit here
+// fills in on a later run.
+export async function getWatchTimeBackfillCandidates(
+  handle: string,
+  platform: string,
+  limit: number,
+): Promise<WatchTimeBackfillCandidate[]> {
+  return query<WatchTimeBackfillCandidate>(
+    `
+    SELECT id, external_id, media_type, media_product_type
+    FROM posts
+    WHERE handle = $1 AND platform = $2 AND media_type = 'VIDEO'
+    ORDER BY watch_time_synced_at IS NULL DESC, posted_at DESC NULLS LAST
+    LIMIT $3
+    `,
+    [handle, platform, limit],
+  );
 }
 
 export interface PostForReview {
