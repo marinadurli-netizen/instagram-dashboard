@@ -10,11 +10,16 @@ export function ScriptQueueList({ scripts }: { scripts: QueuedScript[] }) {
         <h2 className="text-sm font-semibold" style={{ color: "var(--text)" }}>
           Queue{scripts.length > 0 ? ` (${scripts.length})` : ""}
         </h2>
-        {scripts.length > 0 && (
-          <Link href="/session" className="text-xs underline" style={{ color: "var(--idea)" }}>
-            Open Session Mode
+        <div className="flex items-center gap-3">
+          {scripts.length > 0 && (
+            <Link href="/session" className="text-xs underline" style={{ color: "var(--idea)" }}>
+              Open Session Mode
+            </Link>
+          )}
+          <Link href="/scripts/library" className="text-xs underline" style={{ color: "var(--muted)" }}>
+            See every script
           </Link>
-        )}
+        </div>
       </div>
 
       {scripts.length === 0 ? (
