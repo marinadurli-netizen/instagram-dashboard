@@ -47,3 +47,10 @@ export async function getQueuedScripts(): Promise<QueuedScript[]> {
 export async function markScriptFilmed(id: number): Promise<void> {
   await query("UPDATE scripts SET status = 'filmed', updated_at = now() WHERE id = $1", [id]);
 }
+
+// Scoped to status = 'queued' so this can only ever remove a mistaken
+// queue entry, never a script already marked filmed — that's history, not
+// a mistake to undo.
+export async function removeScriptFromQueue(id: number): Promise<void> {
+  await query("DELETE FROM scripts WHERE id = $1 AND status = 'queued'", [id]);
+}

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { saveScriptToQueueAction } from "../actions/scripts";
 
 interface ScriptResult {
@@ -24,6 +25,7 @@ export function ScriptWriter({
   modelPostId?: number;
   modelPostCaption?: string | null;
 }) {
+  const router = useRouter();
   const [topic, setTopic] = useState("");
   const [result, setResult] = useState<ScriptResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -62,6 +64,7 @@ export function ScriptWriter({
         notes: result.notes,
       });
       setSaved(true);
+      router.refresh();
     });
   }
 
@@ -126,9 +129,9 @@ export function ScriptWriter({
               {saved ? "Saved to queue" : "Save to queue"}
             </button>
             {saved && (
-              <Link href="/session" className="text-xs underline" style={{ color: "var(--muted)" }}>
-                Open Session Mode
-              </Link>
+              <span className="text-xs" style={{ color: "var(--muted)" }}>
+                Added to the queue below
+              </span>
             )}
           </div>
         </div>
