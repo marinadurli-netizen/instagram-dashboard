@@ -1,6 +1,8 @@
 import { getProfile } from "@/lib/db/profile";
 import { getPostForModel } from "@/lib/db/posts";
+import { getQueuedScripts } from "@/lib/db/scripts";
 import { ScriptWriter } from "../../components/ScriptWriter";
+import { ScriptQueueList } from "../../components/ScriptQueueList";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,8 @@ async function renderScripts({ modelPostId: modelPostIdParam }: { modelPostId?: 
     modelPostCaption = modelPost?.caption ?? null;
   }
 
+  const queuedScripts = await getQueuedScripts();
+
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
@@ -50,6 +54,8 @@ async function renderScripts({ modelPostId: modelPostIdParam }: { modelPostId?: 
         modelPostId={modelPostId !== undefined && Number.isInteger(modelPostId) ? modelPostId : undefined}
         modelPostCaption={modelPostCaption}
       />
+
+      <ScriptQueueList scripts={queuedScripts} />
     </div>
   );
 }
