@@ -8,6 +8,7 @@ export interface QueuedScript {
   caption: string | null;
   notes: string | null;
   status: string;
+  is_favorite: boolean;
   post_id: number | null;
   created_at: string;
 }
@@ -28,7 +29,7 @@ export async function queueScript(input: SaveScriptInput): Promise<QueuedScript>
   const row = await queryOne<QueuedScript>(
     `INSERT INTO scripts (title, topic, hook, body, caption, notes, status)
      VALUES ($1, $1, $2, $3, $4, $5, 'queued')
-     RETURNING id, topic, hook, body, caption, notes, status, post_id, created_at`,
+     RETURNING id, topic, hook, body, caption, notes, status, is_favorite, post_id, created_at`,
     [input.topic, input.hook, input.script, input.caption, input.notes],
   );
   if (!row) throw new Error("Failed to queue script");
@@ -39,13 +40,33 @@ export async function queueScript(input: SaveScriptInput): Promise<QueuedScript>
 // up first in Session Mode.
 export async function getQueuedScripts(): Promise<QueuedScript[]> {
   return query<QueuedScript>(
-    `SELECT id, topic, hook, body, caption, notes, status, post_id, created_at
+    `SELECT id, topic, hook, body, caption, notes, status, is_favorite, post_id, created_at
      FROM scripts WHERE status = 'queued' ORDER BY created_at ASC`,
+  );
+}
+
+// Every script ever generated, regardless of status — draft, queued or
+// filmed. Marking a script filmed never deletes it; this is the page that
+// proves that. Favorites float to the top, newest first within each group.
+export async function getAllScripts(): Promise<QueuedScript[]> {
+  return query<QueuedScript>(
+    `SELECT id, topic, hook, body, caption, notes, status, is_favorite, post_id, created_at
+     FROM scripts ORDER BY is_favorite DESC, created_at DESC`,
   );
 }
 
 export async function markScriptFilmed(id: number): Promise<void> {
   await query("UPDATE scripts SET status = 'filmed', updated_at = now() WHERE id = $1", [id]);
+}
+
+// "Use another day" — puts a filmed (or draft) script back into the active
+// queue instead of writing a fresh one from scratch.
+export async function requeueScript(id: number): Promise<void> {
+  await query("UPDATE scripts SET status = 'queued', updated_at = now() WHERE id = $1", [id]);
+}
+
+export async function toggleScriptFavorite(id: number): Promise<void> {
+  await query("UPDATE scripts SET is_favorite = NOT is_favorite, updated_at = now() WHERE id = $1", [id]);
 }
 
 // Scoped to status = 'queued' so this can only ever remove a mistaken
