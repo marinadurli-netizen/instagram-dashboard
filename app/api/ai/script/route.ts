@@ -2,8 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { getProfile } from "@/lib/db/profile";
 import { getPostForModel } from "@/lib/db/posts";
 import { completeJson } from "@/lib/ai/complete";
+import { describeAiError } from "@/lib/ai/errors";
 import { isAdminAuthorized } from "@/lib/http/adminAuth";
 import { HttpError } from "@/lib/http/errors";
+
+// Default Vercel function duration is too short for a "medium" effort
+// thinking call plus the SDK's own retry-with-backoff on a transient
+// upstream error (429/500/503/529) — this gives both room to finish.
+export const maxDuration = 60;
 
 interface ScriptResult {
   hook: string;
@@ -76,9 +82,9 @@ function handleError(err: unknown): NextResponse {
   if (err instanceof HttpError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
-  const error = err as Error;
-  console.error("AI script failed:", error);
-  return NextResponse.json({ error: `${error.name}: ${error.message}` }, { status: 500 });
+  console.error("AI script failed:", err);
+  const { status, message } = describeAiError(err);
+  return NextResponse.json({ error: message }, { status });
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {

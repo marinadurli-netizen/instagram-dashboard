@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { completeJson } from "@/lib/ai/complete";
+import { describeAiError } from "@/lib/ai/errors";
 import { isAdminAuthorized } from "@/lib/http/adminAuth";
+
+// Default Vercel function duration is too short for a "medium" effort
+// thinking call plus the SDK's own retry-with-backoff on a transient
+// upstream error (429/500/503/529) — this gives both room to finish.
+export const maxDuration = 60;
 
 const ARCHETYPES = [
   "identity_anchor",
@@ -82,9 +88,9 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
     return NextResponse.json(await runHooks(topic));
   } catch (err) {
-    const error = err as Error;
-    console.error("AI hooks failed:", error);
-    return NextResponse.json({ error: `${error.name}: ${error.message}` }, { status: 500 });
+    console.error("AI hooks failed:", err);
+    const { status, message } = describeAiError(err);
+    return NextResponse.json({ error: message }, { status });
   }
 }
 
@@ -100,8 +106,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     return NextResponse.json(await runHooks(topic));
   } catch (err) {
-    const error = err as Error;
-    console.error("AI hooks failed:", error);
-    return NextResponse.json({ error: `${error.name}: ${error.message}` }, { status: 500 });
+    console.error("AI hooks failed:", err);
+    const { status, message } = describeAiError(err);
+    return NextResponse.json({ error: message }, { status });
   }
 }
