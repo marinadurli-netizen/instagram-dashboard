@@ -3,11 +3,17 @@ import { query } from "@/lib/db/query";
 import { getProfile } from "@/lib/db/profile";
 import { getPostsForAnalysis } from "@/lib/db/posts";
 import { completeJson } from "@/lib/ai/complete";
+import { describeAiError } from "@/lib/ai/errors";
 import { AI_MODEL } from "@/lib/ai/client";
 import { formatPostsTable } from "@/lib/ai/format";
 import { SIGNAL_READING_GUIDE } from "@/lib/ai/signals";
 import { isAdminAuthorized } from "@/lib/http/adminAuth";
 import { HttpError } from "@/lib/http/errors";
+
+// Default Vercel function duration is too short for a "high" effort
+// thinking call plus the SDK's own retry-with-backoff on a transient
+// upstream error (429/500/503/529) — this gives both room to finish.
+export const maxDuration = 60;
 
 const VALID_KINDS = new Set(["win", "warning", "idea"]);
 
@@ -94,9 +100,9 @@ function handleError(err: unknown): NextResponse {
   if (err instanceof HttpError) {
     return NextResponse.json({ error: err.message }, { status: err.status });
   }
-  const error = err as Error;
-  console.error("AI insights failed:", error);
-  return NextResponse.json({ error: `${error.name}: ${error.message}` }, { status: 500 });
+  console.error("AI insights failed:", err);
+  const { status, message } = describeAiError(err);
+  return NextResponse.json({ error: message }, { status });
 }
 
 export async function POST(): Promise<NextResponse> {
